@@ -1,0 +1,143 @@
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+/* sidenote-pdf系と共通のデザイントークン（templex.jp実測分） */
+:root {
+  --tx-text: #0a0a0a;
+  --tx-muted: #4d4d4d;
+  --tx-muted-2: #71717a;
+  --tx-border: #e5e5e5;
+  --tx-bg-muted: #f2f2f2;
+  --tx-radius-card: 14px;
+  --tx-radius-btn: 8px;
+  --tx-shadow-sm: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px -1px rgba(0,0,0,.1);
+  --tx-shadow-md: 0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -2px rgba(0,0,0,.1);
+  --accent: #1a73e8;
+  --danger: #d33;
+}
+body {
+  margin: 0; color: var(--tx-text); background: #fff;
+  font-family: "Source Sans Pro", system-ui, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+  padding: 40px 20px 80px;
+}
+.wrap { max-width: 640px; margin: 0 auto; }
+
+.page-title { font-size: 26px; font-weight: 700; margin: 0 0 8px; letter-spacing: -.3px; }
+.page-desc { font-size: 15px; color: var(--tx-muted); margin: 0 0 32px; line-height: 1.7; }
+
+.card {
+  border: 1px solid var(--tx-border); border-radius: var(--tx-radius-card);
+  box-shadow: var(--tx-shadow-sm); background: #fff; padding: 24px; margin-bottom: 16px;
+}
+
+/* ── ファイル選択（ドロップゾーン） ── */
+.dropzone {
+  border: 2px dashed var(--tx-border); border-radius: 10px; padding: 40px 20px;
+  text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+}
+.dropzone:hover, .dropzone.dragover { border-color: var(--tx-text); background: var(--tx-bg-muted); }
+.dropzone .icon-lg { width: 48px; height: 48px; color: var(--tx-muted-2); margin-bottom: 14px; }
+.dropzone p { margin: 0; font-size: 17px; font-weight: 600; color: var(--tx-text); line-height: 1.6; }
+.dropzone-sub { display: block; font-size: 13px; font-weight: 400; color: var(--tx-muted-2); margin-top: 4px; }
+.dropzone .filename { font-size: 16px; font-weight: 600; color: var(--tx-text); margin-top: 10px; }
+.dropzone input[type="file"] { display: none; }
+
+.options-row { display: flex; align-items: center; gap: 8px; margin-top: 20px; font-size: 13.5px; color: var(--tx-muted); }
+.options-row input[type="checkbox"] { flex: none; }
+
+/* ── 詳しい設定（フォルダ一括・ファイル名など、普段は畳んでおく） ── */
+.advanced { margin-top: 20px; border-top: 1px solid var(--tx-border); padding-top: 16px; }
+.advanced summary {
+  cursor: pointer; font-size: 13.5px; color: var(--tx-muted); font-weight: 500; list-style: none;
+}
+.advanced summary::-webkit-details-marker { display: none; }
+.advanced summary::before { content: "▸ "; color: var(--tx-muted-2); }
+.advanced[open] summary::before { content: "▾ "; }
+.advanced[open] summary { margin-bottom: 4px; }
+
+/* ── 詳しい設定の中の小見出し（処理対象・出力・処理オプション） ── */
+.msec { font-size: 13px; font-weight: 700; color: var(--tx-text); margin: 36px 0 12px; }
+.msec:first-child { margin-top: 0; }
+
+/* ── 出力形式・ファイル名・保存先フォルダ ── */
+.field-group { margin-top: 20px; }
+.field-label { font-size: 13.5px; color: var(--tx-text); margin: 0 0 6px; }
+.field-hint-plain { font-size: 11.5px; color: var(--tx-muted-2); margin: 6px 0 0; line-height: 1.6; }
+.checkbox-row { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 14px; color: var(--tx-text); }
+.checkbox-row label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.field-hint { font-size: 11.5px; color: var(--danger); margin: 6px 0 0; }
+.folder-row { display: flex; align-items: center; gap: 10px; }
+.folder-path {
+  flex: 1 1 auto; min-width: 0; font-size: 13.5px; color: var(--tx-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: 1px solid var(--tx-border); border-radius: var(--tx-radius-btn); padding: 0 12px; height: 40px;
+  display: flex; align-items: center; background: var(--tx-bg-muted);
+}
+.folder-row .btn-outline { flex: none; }
+.btn-icon-only { width: 40px; padding: 0; }
+.text-input {
+  width: 100%; height: 40px; padding: 0 12px; border-radius: var(--tx-radius-btn);
+  border: 1px solid var(--tx-border); font-size: 14px; font-family: inherit;
+  background: #fff; color: var(--tx-text);
+}
+.text-input:focus { outline: none; border-color: var(--tx-text); box-shadow: 0 0 0 3px rgba(10,10,10,.08); }
+
+.actions-row { margin-top: 18px; }
+
+/* ── ボタン共通 ── */
+.btn-outline, .btn-primary {
+  font-size: 14px; height: 40px; padding: 0 18px; border-radius: var(--tx-radius-btn);
+  font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px; text-decoration: none; white-space: nowrap; font-family: inherit;
+}
+.btn-outline { background: #fff; color: var(--tx-text); border: 1px solid var(--tx-border); }
+.btn-outline:hover { background: var(--tx-bg-muted); }
+.btn-primary { background: var(--tx-text); color: #fff; border: 1px solid var(--tx-text); }
+.btn-primary:hover { background: #262626; }
+.btn-primary:disabled, .btn-outline:disabled { background: #f5f6f8; color: #b7bac2; border-color: #eee; cursor: not-allowed; }
+.icon { width: 1.05em; height: 1.05em; flex: none; }
+
+/* 一番押してほしい操作なので、幅いっぱい・大きめにして迷わせない */
+.btn-big { width: 100%; height: 52px; font-size: 16px; font-weight: 600; }
+
+/* ── 処理中 ── */
+#progressCard p { margin: 0 0 12px; font-size: 14px; color: var(--tx-muted); font-variant-numeric: tabular-nums; }
+.progress-bar { height: 8px; border-radius: 999px; background: var(--tx-bg-muted); overflow: hidden; }
+.progress-fill { height: 100%; background: var(--tx-text); border-radius: 999px; width: 0%; transition: width .3s; }
+
+/* ── 結果 ── */
+.result-summary { margin: 0 0 8px; font-size: 14px; color: var(--tx-muted); }
+.saved-note { margin: 0 0 16px; font-size: 13.5px; color: var(--tx-text); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.saved-note .path { color: var(--tx-muted); }
+.result-row { display: flex; flex-direction: column; gap: 10px; }
+.result-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px solid var(--tx-border); border-radius: 10px; padding: 12px 16px;
+}
+.result-item-label { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; }
+.result-item-label .icon { width: 18px; height: 18px; color: var(--tx-muted-2); }
+.result-item-desc { font-size: 12px; color: var(--tx-muted-2); margin-top: 2px; }
+.reset-row { margin-top: 20px; text-align: center; }
+
+/* ── フォルダ一括処理の結果一覧 ── */
+.batch-list { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.batch-list-item { display: flex; align-items: baseline; gap: 8px; }
+.batch-status-ok { color: var(--tx-muted-2); flex: none; }
+.batch-status-error { color: var(--danger); flex: none; font-weight: 600; }
+.batch-list-item .fname { color: var(--tx-text); overflow-wrap: anywhere; }
+.batch-list-item .emsg { color: var(--tx-muted-2); }
+
+/* ── エラー ── */
+.error-card { border-color: #f3c9c9; background: #fff7f7; }
+.error-card p { margin: 0; font-size: 14px; color: var(--danger); }
+
+/* ── 免責事項 ── */
+.disclaimer-title { font-size: 13px; font-weight: 700; color: var(--tx-text); margin: 0 0 10px; }
+.disclaimer-text { font-size: 12px; color: var(--tx-muted-2); margin: 0 0 6px; line-height: 1.7; }
+.disclaimer-text:last-child { margin-bottom: 0; }
+
+.footer-note { font-size: 12px; color: var(--tx-muted-2); text-align: center; margin-top: 24px; line-height: 1.7; }
+
+@media (max-width: 500px) {
+  body { padding: 24px 16px 60px; }
+  .card { padding: 18px; }
+}

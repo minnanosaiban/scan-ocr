@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>スキャンOCR</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="style.css?v=9">
+</head>
+<body>
+<div class="wrap">
+
+  <h1 class="page-title">スキャンOCR</h1>
+  <p class="page-desc">スキャンした書類を、パソコンで検索・編集できるファイルに変えます。処理はこのパソコンの中だけで行われ、外部には送信されません。</p>
+
+  <!-- ① ファイル選択 -->
+  <div class="card" id="uploadCard">
+    <label class="dropzone" id="dropzone">
+      <svg class="icon-lg" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2M9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5z"/>
+      </svg>
+      <p id="dropHint">ここをクリックして書類を選ぶ<br><span class="dropzone-sub">またはファイルをドラッグ＆ドロップ（PDF・JPG・PNG）</span></p>
+      <div class="filename" id="filename" hidden></div>
+      <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,.bmp,.tiff,.tif">
+    </label>
+
+    <div class="actions-row">
+      <button class="btn-primary btn-big" id="startBtn" disabled>変換を始める</button>
+    </div>
+
+    <details class="advanced">
+      <summary>詳しい設定（フォルダをまとめて処理・ファイル名 など）</summary>
+
+      <div class="msec">処理対象</div>
+      <div class="field-group">
+        <div class="field-label">フォルダーを選択してOCR</div>
+        <div class="folder-row">
+          <span class="folder-path" id="inputFolderPath">未選択</span>
+          <button type="button" class="btn-outline" id="pickInputFolderBtn">フォルダを選ぶ</button>
+          <button type="button" class="btn-outline btn-icon-only" id="clearInputFolderBtn" hidden title="解除">✕</button>
+        </div>
+      </div>
+
+      <div class="msec">出力</div>
+      <div class="field-group">
+        <div class="field-label">作成するファイル</div>
+        <div class="checkbox-row">
+          <label><input type="checkbox" class="outputChk" value="pdf" checked> テキスト乗せPDF</label>
+          <label><input type="checkbox" class="outputChk" value="md" checked> Markdown</label>
+          <label><input type="checkbox" class="outputChk" value="json" checked> JSON</label>
+        </div>
+        <p class="field-hint" id="outputHint" hidden>1つ以上選んでください</p>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">ファイル名（拡張子は自動で付きます）</div>
+        <input type="text" class="text-input" id="nameTemplate" value="{stem}_ocr">
+        <p class="field-hint-plain">{stem}=元のファイル名</p>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">保存先フォルダ（任意）</div>
+        <div class="folder-row">
+          <span class="folder-path" id="folderPath">未選択（ダウンロードのみ）</span>
+          <button type="button" class="btn-outline" id="pickFolderBtn">フォルダを選ぶ</button>
+        </div>
+        <p class="field-hint-plain" id="folderPathHint" hidden>フォルダ処理で未選択の場合、入力フォルダと同じ場所に保存されます</p>
+      </div>
+
+      <div class="msec">処理オプション</div>
+      <div class="options-row">
+        <input type="checkbox" id="liteMode">
+        <label for="liteMode">軽量モデルで処理する（速いが精度は下がる）</label>
+      </div>
+    </details>
+  </div>
+
+  <!-- ② 処理中 -->
+  <div class="card" id="progressCard" hidden>
+    <p id="progressText">処理中…</p>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+
+  <!-- ③ 結果 -->
+  <div class="card" id="resultCard" hidden>
+    <p class="result-summary" id="resultSummary"></p>
+    <p class="saved-note" id="savedNote" hidden></p>
+    <div class="result-row" id="resultItems"><!-- app.js が選ばれた形式ぶんだけ組み立てる --></div>
+    <div class="reset-row">
+      <button class="btn-outline" id="resetBtn">別のファイルを処理する</button>
+    </div>
+  </div>
+
+  <!-- エラー -->
+  <div class="card error-card" id="errorCard" hidden>
+    <p id="errorText"></p>
+  </div>
+
+  <!-- 免責事項 -->
+  <div class="card disclaimer-card">
+    <div class="disclaimer-title">免責事項</div>
+    <p class="disclaimer-text">※本ツールは無保証で提供されます（現状有姿）。</p>
+    <p class="disclaimer-text">※処理はこのPC上のみで完結し外部送信されませんが、ご利用環境に起因する情報漏えいについて作成者は責任を負いません。</p>
+    <p class="disclaimer-text">※本ツールの利用により生じたいかなる損害についても作成者は責任を負わず、本ツールは法的助言を提供するものではありません。</p>
+    <p class="disclaimer-text">※OCRには誤認識・レイアウト崩れが生じる場合があります。出力（テキスト乗せPDF・Markdown・JSON）の内容は必ずご自身でご確認ください。</p>
+  </div>
+
+  <p class="footer-note">OCRエンジン: YomiToku（CC BY-NC-SA 4.0・非商用）。処理はこのPC上のみで行われます。</p>
+
+</div>
+<script src="app.js?v=3"></script>
+</body>
+</html>
