@@ -82,18 +82,49 @@ def process_document(
     if ext not in SUPPORT_INPUT_EXT:
         raise ValueError(f"未対応の形式です: .{ext}")
 
+    imgs = load_pdf(input_path, dpi=dpi) if ext == "pdf" else load_image(input_path)
+    return process_rendered(
+        imgs, input_path.stem, outdir,
+        lite=lite, device=device, outputs=outputs, name_template=name_template,
+        on_progress=on_progress, source_name=input_path.name,
+        overwrite_check=input_path,
+    )
+
+
+def process_rendered(
+    imgs,
+    stem: str,
+    outdir: Path,
+    lite: bool = False,
+    device: str = "cpu",
+    outputs: Optional[set] = None,
+    name_template: str = DEFAULT_NAME_TEMPLATE,
+    on_progress: Optional[Callable[[int, int], None]] = None,
+    source_name: Optional[str] = None,
+    overwrite_check: Optional[Path] = None,
+    extra_json_fields: Optional[dict] = None,
+) -> dict:
+    """すでにメモリ上にある画像（レンダリング済み、または墨消し焼き込み済み）からOCRし、
+    outdir に選ばれた形式だけを書き出す。process_document はこれの薄いラッパー。
+
+    imgs: yomitoku形式のBGR numpy配列のリスト
+    stem: 出力ファイル名の元になる文書名（拡張子なし）
+    overwrite_check: 指定した場合、書き出し先PDFがこのパスと同一になるときエラーにする
+                      （出力先=入力元フォルダで元のスキャンPDFを誤って上書きするのを防ぐ）
+    extra_json_fields: JSON出力のトップレベルに足す追加フィールド（例: {"redacted": True}）
+    """
     outputs = SUPPORT_OUTPUTS if outputs is None else (outputs & SUPPORT_OUTPUTS)
     if not outputs:
         raise ValueError("出力形式が1つも選ばれていません")
 
-    base = resolve_base_name(name_template, input_path.stem)
-    if "pdf" in outputs and (outdir / f"{base}.pdf").resolve() == input_path.resolve():
+    base = resolve_base_name(name_template, stem)
+    if "pdf" in outputs and overwrite_check is not None \
+            and (outdir / f"{base}.pdf").resolve() == overwrite_check.resolve():
         raise ValueError(
             "出力ファイル名が元のファイルと同じで、上書きしてしまいます。"
             "ファイル名の設定を変えてください（既定: {stem}_ocr）"
         )
 
-    imgs = load_pdf(input_path, dpi=dpi) if ext == "pdf" else load_image(input_path)
     analyzer = get_analyzer(lite, device)
 
     results = []
@@ -131,11 +162,12 @@ def process_document(
     if "json" in outputs:
         json_path = outdir / f"{base}.json"
         json_doc = {
-            "source": input_path.name,
+            "source": source_name or stem,
             "page_count": total,
             "generated_at": datetime.now(JST).isoformat(),
             "engine": "yomitoku",
-            # ここに将来の "+α"（低信頼度フラグ・見出し目次・墨消しログ等）を追加していく。
+            **(extra_json_fields or {}),
+            # ここに将来の "+α"（低信頼度フラグ・見出し目次等）を追加していく。
             "pages": json_pages,
         }
         json_path.write_text(json.dumps(json_doc, ensure_ascii=False, indent=2), encoding="utf-8")

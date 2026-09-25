@@ -22,10 +22,12 @@ from starlette.concurrency import run_in_threadpool
 
 from ocr_pipeline import (
     process_document,
+    process_rendered,
     SUPPORT_INPUT_EXT,
     SUPPORT_OUTPUTS,
     DEFAULT_NAME_TEMPLATE,
 )
+import redact as redact_mod
 
 BASE_DIR = Path(__file__).parent
 JOBS_DIR = BASE_DIR / "jobs"
@@ -264,6 +266,241 @@ FMT_MEDIA = {
 async def api_download(job_id: str, fmt: str):
     job = JOBS.get(job_id)
     if not job or job["status"] != "done" or job["mode"] != "single":
+        raise HTTPException(404, "ファイルがまだありません")
+    path = job["files"].get(fmt)
+    if not path:
+        raise HTTPException(404, f"この形式は生成されていません: {fmt}")
+    return FileResponse(path, media_type=FMT_MEDIA.get(fmt), filename=Path(path).name)
+
+
+import json as _json
+
+# ── 墨消し ──────────────────────────────────────────────────────────
+# job_id -> {phase:"lines"|"apply", status, pages_done, pages_total, page_count,
+#            error, dir(Path), stem, files, saved_dir, save_warning, leftover}
+REDACT_JOBS: dict = {}
+
+
+def run_redact_lines_job(job_id: str, input_path: Path, lite: bool, dpi: int = 200):
+    job = REDACT_JOBS[job_id]
+    job["status"] = "processing"
+    try:
+        imgs = redact_mod.render_pages(input_path, dpi=dpi)
+        job["page_count"] = len(imgs)
+        redact_dir = job["dir"]
+        redact_mod.save_page_images(imgs, redact_dir / "pages")
+
+        def on_progress(done, total):
+            job["pages_done"] = done
+            job["pages_total"] = total
+
+        pages_lines = redact_mod.ocr_lines(imgs, lite=lite, on_progress=on_progress)
+        (redact_dir / "lines.json").write_text(
+            _json.dumps(pages_lines, ensure_ascii=False), encoding="utf-8"
+        )
+        job["status"] = "done"
+    except Exception as e:
+        job["status"] = "error"
+        job["error"] = str(e)
+
+
+@app.post("/api/redact/start")
+async def api_redact_start(
+    file: UploadFile = File(...),
+    lite: str = Form("false"),
+):
+    ext = Path(file.filename).suffix[1:].lower()
+    if ext not in SUPPORT_INPUT_EXT:
+        raise HTTPException(400, f"未対応の形式です: .{ext}")
+
+    job_id = uuid.uuid4().hex[:12]
+    job_dir = JOBS_DIR / job_id
+    redact_dir = job_dir / "redact"
+    redact_dir.mkdir(parents=True, exist_ok=True)
+
+    input_path = job_dir / file.filename
+    with open(input_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    REDACT_JOBS[job_id] = {
+        "phase": "lines",
+        "status": "queued",
+        "pages_done": 0,
+        "pages_total": 0,
+        "page_count": 0,
+        "error": None,
+        "dir": redact_dir,
+        "stem": Path(file.filename).stem,
+        "input_name": file.filename,
+        "files": {},
+        "saved_dir": None,
+        "save_warning": None,
+        "leftover": None,
+    }
+
+    thread = threading.Thread(
+        target=run_redact_lines_job,
+        args=(job_id, input_path, lite.lower() == "true"),
+        daemon=True,
+    )
+    thread.start()
+
+    return {"job_id": job_id}
+
+
+@app.get("/api/redact/status/{job_id}")
+async def api_redact_status(job_id: str):
+    job = REDACT_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "ジョブが見つかりません")
+    return {
+        "phase": job["phase"],
+        "status": job["status"],
+        "pages_done": job["pages_done"],
+        "pages_total": job["pages_total"],
+        "page_count": job["page_count"],
+        "error": job["error"],
+        "files": sorted(job["files"].keys()),
+        "saved_dir": job["saved_dir"],
+        "save_warning": job["save_warning"],
+        "leftover": job["leftover"],
+    }
+
+
+@app.get("/api/redact/page/{job_id}/{page_no}")
+async def api_redact_page(job_id: str, page_no: int):
+    job = REDACT_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "ジョブが見つかりません")
+    path = job["dir"] / "pages" / f"page_{page_no:03d}.png"
+    if not path.exists():
+        raise HTTPException(404, "ページ画像が見つかりません")
+    return FileResponse(path, media_type="image/png")
+
+
+@app.post("/api/redact/match")
+async def api_redact_match(job_id: str = Form(...), dictionary: str = Form("")):
+    job = REDACT_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "ジョブが見つかりません")
+    if job["phase"] != "lines" or job["status"] != "done":
+        raise HTTPException(409, "候補検出用OCRがまだ完了していません")
+
+    lines_path = job["dir"] / "lines.json"
+    pages_lines = _json.loads(lines_path.read_text(encoding="utf-8"))
+    terms = redact_mod.load_dictionary(dictionary)
+    candidates = redact_mod.find_candidates(pages_lines, terms)
+    return {
+        "page_count": job["page_count"],
+        "candidates": [c.to_dict() for c in candidates],
+    }
+
+
+def run_redact_apply_job(
+    job_id: str,
+    boxes_per_page: dict,
+    dictionary_text: str,
+    outputs: set,
+    output_dir: str | None,
+    name_template: str,
+    lite: bool,
+):
+    job = REDACT_JOBS[job_id]
+    job["phase"] = "apply"
+    job["status"] = "processing"
+    job["pages_done"] = 0
+    job["pages_total"] = 0
+    t0 = time.time()
+    try:
+        page_paths = sorted((job["dir"] / "pages").glob("page_*.png"))
+        imgs = redact_mod.load_page_images(page_paths)
+        redacted_imgs = redact_mod.burn_boxes(imgs, boxes_per_page)
+
+        def on_progress(done, total):
+            job["pages_done"] = done
+            job["pages_total"] = total
+
+        outdir = job["dir"] / "output"
+        result = process_rendered(
+            redacted_imgs,
+            job["stem"],
+            outdir,
+            lite=lite,
+            outputs=outputs,
+            name_template=name_template,
+            on_progress=on_progress,
+            source_name=job["input_name"],
+            extra_json_fields={"redacted": True},
+        )
+        job["files"] = {k: str(result[k]) for k in outputs if k in result}
+        job["elapsed_sec"] = time.time() - t0
+
+        # 検証: 墨消し後の画像を再OCRし、辞書語・パターンが残っていないか確認する
+        terms = redact_mod.load_dictionary(dictionary_text)
+        if terms:
+            verify_lines = redact_mod.ocr_lines(redacted_imgs, lite=lite)
+            job["leftover"] = redact_mod.verify_no_leftover(verify_lines, terms)
+        else:
+            job["leftover"] = []
+
+        if output_dir:
+            try:
+                dest = Path(output_dir)
+                for path in job["files"].values():
+                    shutil.copy2(path, dest / Path(path).name)
+                job["saved_dir"] = str(dest)
+            except Exception as e:
+                job["save_warning"] = f"保存先フォルダへのコピーに失敗しました: {e}"
+
+        job["status"] = "done"
+    except Exception as e:
+        job["status"] = "error"
+        job["error"] = str(e)
+
+
+@app.post("/api/redact/apply")
+async def api_redact_apply(
+    job_id: str = Form(...),
+    boxes: str = Form(...),  # JSON文字列: {"1": [[x0,y0,x1,y1], ...], "2": [...]}
+    dictionary: str = Form(""),
+    outputs: str = Form("pdf,md,json"),
+    output_dir: str = Form(""),
+    name_template: str = Form(DEFAULT_NAME_TEMPLATE),
+    lite: str = Form("false"),
+):
+    job = REDACT_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "ジョブが見つかりません")
+    if job["phase"] != "lines" or job["status"] != "done":
+        raise HTTPException(409, "候補検出用OCRがまだ完了していません")
+
+    try:
+        boxes_raw = _json.loads(boxes)
+        boxes_per_page = {int(k): v for k, v in boxes_raw.items()}
+    except Exception:
+        raise HTTPException(400, "矩形データの形式が不正です")
+
+    output_set = _parse_outputs(outputs)
+    if not output_set:
+        raise HTTPException(400, "出力形式を1つ以上選んでください")
+
+    thread = threading.Thread(
+        target=run_redact_apply_job,
+        args=(
+            job_id, boxes_per_page, dictionary, output_set,
+            output_dir.strip() or None, name_template, lite.lower() == "true",
+        ),
+        daemon=True,
+    )
+    thread.start()
+
+    return {"job_id": job_id}
+
+
+@app.get("/api/redact/download/{job_id}/{fmt}")
+async def api_redact_download(job_id: str, fmt: str):
+    job = REDACT_JOBS.get(job_id)
+    if not job or job["status"] != "done" or job["phase"] != "apply":
         raise HTTPException(404, "ファイルがまだありません")
     path = job["files"].get(fmt)
     if not path:

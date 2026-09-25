@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>墨消し - スキャンOCR</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="redact.css?v=1">
+</head>
+<body>
+<div class="wrap wrap-wide">
+
+  <h1 class="page-title">墨消し</h1>
+  <p class="page-desc">
+    人名・住所などをスキャン画像の上で黒塗りしてから、あらためてOCRします。
+    墨消しした文字は、できあがるPDF・Markdown・JSONのどこにも残りません。
+    処理はこのパソコンの中だけで行われます。
+  </p>
+  <p class="nav-link"><a href="index.html">← 通常のOCRに戻る</a></p>
+
+  <!-- 訴訟資料を墨消しする手順 -->
+  <details class="card howto-card" open>
+    <summary class="howto-summary">訴訟資料を墨消しする手順</summary>
+    <ol class="howto-list">
+      <li>
+        <strong>① 消す語のリストを作る</strong><br>
+        当事者目録・訴状冒頭・代理人欄・証人名などから、黒塗りしたい人名・住所・会社名を拾い出し、
+        下の「墨消しする語」欄に1行1語で入力します。
+        姓・名は別々の行にも入れ、カナ表記や旧字体（髙・﨑など）が使われていればそれも並べておくと
+        検出しやすくなります（表記ゆれは「/」区切りで1行にまとめられます）。
+        電話番号・郵便番号・日付は自動で検出されるので、辞書に入れる必要はありません。
+      </li>
+      <li>
+        <strong>② 候補を検出する</strong><br>
+        書類（PDF・画像）を選び、「候補を検出する」を押します。ページごとに、辞書やパターンに
+        一致した行が赤枠、OCRの読み取り精度が低く見落としの可能性がある行が黄枠で表示されます。
+      </li>
+      <li>
+        <strong>③ 全ページを目で確認する</strong><br>
+        赤枠は既定で墨消し対象になっていますが、誤検出がないか確認してください。
+        黄枠（低信頼度）は既定では対象外なので、実際に人名・住所などが写っていれば
+        クリックして対象に加えてください。辞書に無い名前（証人など）が見つかった場合は、
+        画像をドラッグして手動で枠を追加できます。ページ送りで<u>全ページ</u>を見て回ってください。
+      </li>
+      <li>
+        <strong>④ 墨消しを実行する</strong><br>
+        「この内容で墨消しを実行」を押すと、確定した範囲を元画像に黒塗りしてから改めてOCRし直します。
+        墨消しした文字は、できあがるファイルのどこにも残りません。
+      </li>
+      <li>
+        <strong>⑤ 結果を再確認してから公開する</strong><br>
+        完了後、墨消し後の再チェックで辞書の語がまだ見つかった場合は警告が表示されます。
+        警告が無くても、できあがったPDFを開いて全ページを人の目で必ず確認してから、
+        訴訟資料として提出・公開してください。元のスキャンPDF（墨消し前）は
+        誤って公開・送付しないよう、別に厳重に保管してください。
+      </li>
+    </ol>
+  </details>
+
+  <!-- ① 取り込み -->
+  <div class="card" id="uploadCard">
+    <label class="dropzone" id="dropzone">
+      <svg class="icon-lg" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2M9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5z"/>
+      </svg>
+      <p id="dropHint">ここをクリックして書類を選ぶ<br><span class="dropzone-sub">またはファイルをドラッグ＆ドロップ（PDF・JPG・PNG、1ファイルずつ）</span></p>
+      <div class="filename" id="filename" hidden></div>
+      <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,.bmp,.tiff,.tif">
+    </label>
+
+    <div class="field-group">
+      <div class="field-label">墨消しする語（人名・住所など）</div>
+      <textarea class="text-area" id="dictionaryInput" rows="6" placeholder="1行に1語。表記ゆれは「/」で区切って並べられます。「#」以降はコメント扱いです。&#10;&#10;例:&#10;山田太郎 / 山田 / 太郎 / ヤマダタロウ&#10;東京都新宿区西新宿1-2-3&#10;株式会社サンプル商事  # 相手方の会社名"></textarea>
+      <p class="field-hint-plain">氏名は姓・名を別々の行にも入れておくと拾いやすくなります。電話番号・郵便番号・日付は辞書に入れなくても自動で検出します。</p>
+    </div>
+
+    <div class="options-row">
+      <input type="checkbox" id="liteMode">
+      <label for="liteMode">軽量モデルで処理する（速いが精度は下がる）</label>
+    </div>
+
+    <div class="actions-row">
+      <button class="btn-primary btn-big" id="startBtn" disabled>候補を検出する</button>
+    </div>
+  </div>
+
+  <!-- ② 検出中 -->
+  <div class="card" id="progressCard" hidden>
+    <p id="progressText">処理中…</p>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+
+  <!-- ③ レビュー -->
+  <div class="card review-card" id="reviewCard" hidden>
+    <p class="field-hint-plain review-help">
+      赤枠＝自動検出された候補（黒塗り対象）。黄枠＝OCRの信頼度が低い行（要確認、既定では対象外）。
+      枠をクリックで対象/対象外を切り替え。画像の上をドラッグすると手動で枠を追加できます。
+    </p>
+
+    <div class="page-nav">
+      <button class="btn-outline" id="prevPageBtn">← 前のページ</button>
+      <span id="pageIndicator">ページ 1 / 1</span>
+      <button class="btn-outline" id="nextPageBtn">次のページ →</button>
+    </div>
+
+    <div class="canvas-wrap" id="canvasWrap">
+      <img id="pageImg" alt="">
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <div class="candidate-list" id="candidateList"></div>
+
+    <details class="advanced" open>
+      <summary>出力設定</summary>
+      <div class="field-group">
+        <div class="field-label">作成するファイル</div>
+        <div class="checkbox-row">
+          <label><input type="checkbox" class="outputChk" value="pdf" checked> テキスト乗せPDF</label>
+          <label><input type="checkbox" class="outputChk" value="md"> Markdown</label>
+          <label><input type="checkbox" class="outputChk" value="json"> JSON</label>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">ファイル名（拡張子は自動で付きます）</div>
+        <input type="text" class="text-input" id="nameTemplate" value="{stem}_墨消し済み">
+      </div>
+      <div class="field-group">
+        <div class="field-label">保存先フォルダ（任意）</div>
+        <div class="folder-row">
+          <span class="folder-path" id="folderPath">未選択（ダウンロードのみ）</span>
+          <button type="button" class="btn-outline" id="pickFolderBtn">フォルダを選ぶ</button>
+        </div>
+      </div>
+    </details>
+
+    <div class="actions-row">
+      <button class="btn-primary btn-big" id="applyBtn">この内容で墨消しを実行</button>
+    </div>
+  </div>
+
+  <!-- ④ 実行中 -->
+  <div class="card" id="applyProgressCard" hidden>
+    <p id="applyProgressText">墨消しを焼き込んでOCRし直しています…</p>
+    <div class="progress-bar"><div class="progress-fill" id="applyProgressFill"></div></div>
+  </div>
+
+  <!-- ⑤ 結果 -->
+  <div class="card" id="resultCard" hidden>
+    <p class="result-summary" id="resultSummary"></p>
+    <p class="saved-note" id="savedNote" hidden></p>
+    <div class="result-row" id="resultItems"></div>
+
+    <div class="leftover-box" id="leftoverBox" hidden>
+      <div class="leftover-title">⚠ 墨消し後の再チェックで、辞書の語がまだ見つかりました</div>
+      <p class="field-hint-plain">誤検出の可能性もありますが、念のため出力ファイルの該当ページをご自身の目でも確認してください。</p>
+      <ul id="leftoverList"></ul>
+    </div>
+
+    <div class="reset-row">
+      <button class="btn-outline" id="resetBtn">別のファイルを処理する</button>
+    </div>
+  </div>
+
+  <!-- エラー -->
+  <div class="card error-card" id="errorCard" hidden>
+    <p id="errorText"></p>
+  </div>
+
+  <div class="card disclaimer-card">
+    <div class="disclaimer-title">免責事項</div>
+    <p class="disclaimer-text">※本機能は無保証で提供されます（現状有姿）。自動検出は完全ではありません。公開前に必ずご自身の目で全ページを確認してください。</p>
+    <p class="disclaimer-text">※処理はこのPC上のみで完結し外部送信されませんが、ご利用環境に起因する情報漏えいについて作成者は責任を負いません。</p>
+    <p class="disclaimer-text">※本ツールの利用により生じたいかなる損害についても作成者は責任を負わず、本ツールは法的助言を提供するものではありません。</p>
+  </div>
+
+</div>
+<script src="redact.js?v=1"></script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+/* 墨消しページ専用のスタイル（style.cssのトークン・部品を流用） */
+
+.wrap-wide { max-width: 900px; }
+
+.nav-link { font-size: 13.5px; margin: -18px 0 24px; }
+.nav-link a { color: var(--tx-muted); text-decoration: none; }
+.nav-link a:hover { color: var(--tx-text); text-decoration: underline; }
+
+/* ── 訴訟資料を墨消しする手順 ── */
+.howto-card { background: #f7f9fc; border-color: #dce4f0; }
+.howto-summary {
+  cursor: pointer; font-size: 15px; font-weight: 700; color: var(--tx-text);
+  list-style: none;
+}
+.howto-summary::-webkit-details-marker { display: none; }
+.howto-summary::before { content: "▾ "; color: var(--accent); }
+.howto-card:not([open]) .howto-summary::before { content: "▸ "; }
+.howto-list { margin: 16px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 14px; }
+.howto-list li { font-size: 13.5px; line-height: 1.8; color: var(--tx-text); }
+.howto-list strong { font-size: 13.5px; }
+
+.text-area {
+  width: 100%; min-height: 120px; padding: 10px 12px; border-radius: var(--tx-radius-btn);
+  border: 1px solid var(--tx-border); font-size: 13.5px; font-family: inherit;
+  background: #fff; color: var(--tx-text); resize: vertical; line-height: 1.6;
+}
+.text-area:focus { outline: none; border-color: var(--tx-text); box-shadow: 0 0 0 3px rgba(10,10,10,.08); }
+
+.review-help { margin-bottom: 16px; }
+
+.page-nav {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  margin-bottom: 14px; font-size: 13.5px; color: var(--tx-muted);
+}
+.page-nav span { min-width: 110px; text-align: center; font-variant-numeric: tabular-nums; }
+
+.canvas-wrap {
+  position: relative; width: 100%; max-height: 78vh; overflow: auto;
+  border: 1px solid var(--tx-border); border-radius: 10px; background: var(--tx-bg-muted);
+  text-align: center; line-height: 0;
+}
+.canvas-wrap img { max-width: 100%; height: auto; display: inline-block; user-select: none; }
+.canvas-wrap canvas {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  cursor: crosshair;
+}
+
+.candidate-list {
+  margin-top: 16px; display: flex; flex-direction: column; gap: 6px;
+  max-height: 220px; overflow-y: auto; border-top: 1px solid var(--tx-border); padding-top: 12px;
+}
+.candidate-row {
+  display: flex; align-items: flex-start; gap: 10px; font-size: 13px; padding: 4px 2px;
+  border-radius: 6px;
+}
+.candidate-row:hover { background: var(--tx-bg-muted); }
+.candidate-row input[type="checkbox"] { margin-top: 3px; flex: none; }
+.candidate-swatch { width: 10px; height: 10px; border-radius: 2px; margin-top: 4px; flex: none; }
+.candidate-swatch.dict, .candidate-swatch.pattern, .candidate-swatch.manual { background: #e0433d; }
+.candidate-swatch.low_confidence { background: #e0b400; }
+.candidate-text { flex: 1; min-width: 0; }
+.candidate-text .ctext { color: var(--tx-text); overflow-wrap: anywhere; }
+.candidate-text .creason { color: var(--tx-muted-2); font-size: 11.5px; }
+.candidate-empty { color: var(--tx-muted-2); font-size: 13px; padding: 8px 2px; }
+
+.leftover-box {
+  margin-top: 16px; padding: 14px 16px; border-radius: 10px;
+  background: #fff7e6; border: 1px solid #f0d99a;
+}
+.leftover-title { font-size: 13.5px; font-weight: 700; color: #8a5a00; margin-bottom: 6px; }
+.leftover-box ul { margin: 8px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--tx-text); }
+.leftover-box li { margin-bottom: 4px; }
