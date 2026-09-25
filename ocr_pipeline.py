@@ -5,6 +5,8 @@ OCR(YomiToku)は1ページにつき1回だけ実行し、その結果を3形式�
 将来の拡張（墨消し・見出し目次・低信頼度フラグ等の "+α"）はここに足していく想定。
 """
 
+from __future__ import annotations
+
 import json
 import re
 import time
@@ -14,10 +16,8 @@ from typing import Callable, Optional
 
 from PIL import Image
 
-from yomitoku.document_analyzer import DocumentAnalyzer
-from yomitoku.data.functions import load_pdf, load_image
-from yomitoku.export import convert_markdown
-from yomitoku.utils.searchable_pdf import create_searchable_pdf
+# yomitoku(torch/torchvision込み)の読み込みは重く、サーバー起動時に済ませると
+# ブラウザが開くまで10秒以上待たされる。実際に使う関数の中で遅延インポートする。
 
 SUPPORT_INPUT_EXT = {"pdf", "jpg", "jpeg", "png", "bmp", "tiff", "tif"}
 SUPPORT_OUTPUTS = {"pdf", "md", "json"}
@@ -48,6 +48,8 @@ _analyzer_cache: dict = {}
 
 def get_analyzer(lite: bool = False, device: str = "cpu") -> DocumentAnalyzer:
     """DocumentAnalyzerはモデル初期化が重いので (lite, device) ごとに使い回す。"""
+    from yomitoku.document_analyzer import DocumentAnalyzer
+
     key = (lite, device)
     if key not in _analyzer_cache:
         configs: dict = {}
@@ -78,6 +80,8 @@ def process_document(
 
     戻り値: {"pages": int, <選ばれた形式>: Path, ...}
     """
+    from yomitoku.data.functions import load_pdf, load_image
+
     ext = input_path.suffix[1:].lower()
     if ext not in SUPPORT_INPUT_EXT:
         raise ValueError(f"未対応の形式です: .{ext}")
@@ -113,6 +117,9 @@ def process_rendered(
                       （出力先=入力元フォルダで元のスキャンPDFを誤って上書きするのを防ぐ）
     extra_json_fields: JSON出力のトップレベルに足す追加フィールド（例: {"redacted": True}）
     """
+    from yomitoku.export import convert_markdown
+    from yomitoku.utils.searchable_pdf import create_searchable_pdf
+
     outputs = SUPPORT_OUTPUTS if outputs is None else (outputs & SUPPORT_OUTPUTS)
     if not outputs:
         raise ValueError("出力形式が1つも選ばれていません")

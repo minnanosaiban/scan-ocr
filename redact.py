@@ -22,8 +22,6 @@ from typing import Callable, Optional
 import numpy as np
 from PIL import Image, ImageDraw
 
-from yomitoku.data.functions import load_pdf, load_image
-
 from ocr_pipeline import get_analyzer, SUPPORT_INPUT_EXT
 
 # 訴訟資料でよく出る旧字体・異体字の正規化。辞書語・OCR結果の双方に適用してから比較する。
@@ -90,6 +88,8 @@ def load_dictionary(text: str) -> list[str]:
 
 def render_pages(input_path: Path, dpi: int = 200):
     """PDF/画像を、yomitokuが受け取れるBGR numpy配列のリストにする（OCRはまだしない）。"""
+    from yomitoku.data.functions import load_pdf, load_image
+
     ext = input_path.suffix[1:].lower()
     if ext not in SUPPORT_INPUT_EXT:
         raise ValueError(f"未対応の形式です: .{ext}")
