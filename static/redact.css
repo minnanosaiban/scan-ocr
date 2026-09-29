@@ -1,10 +1,8 @@
 /* 墨消しページ専用のスタイル（style.cssのトークン・部品を流用） */
 
 .wrap-wide { max-width: 900px; }
+.page-note { font-size: 13.5px; color: var(--tx-muted); line-height: 1.8; margin: 0 0 16px; }
 
-.nav-link { font-size: 13.5px; margin: -18px 0 24px; }
-.nav-link a { color: var(--tx-muted); text-decoration: none; }
-.nav-link a:hover { color: var(--tx-text); text-decoration: underline; }
 
 /* ── 訴訟資料を墨消しする手順 ── */
 .howto-card { background: #f7f9fc; border-color: #dce4f0; }

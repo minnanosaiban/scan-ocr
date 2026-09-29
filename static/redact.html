@@ -5,19 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>墨消し - スキャンOCR</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="stylesheet" href="style.css?v=9">
-<link rel="stylesheet" href="redact.css?v=1">
+<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="redact.css?v=2">
 </head>
 <body>
+<header class="hero">
+  <div class="hero-inner">
+    <div class="hero-left">
+      <h1 class="hero-title">スキャンOCR</h1>
+      <p class="hero-desc">人名・住所を黒塗りしてから、OCR。</p>
+      <div class="hero-shortcuts">
+        <div class="hero-shortcuts-title">処理はこのパソコンの中だけ</div>
+        <ul>
+          <li>書類は外部へ送信されません</li>
+          <li>ご利用前に下の免責事項をご覧ください</li>
+        </ul>
+      </div>
+      <div class="hero-theme-section">
+        <div class="hero-theme-head"><span class="hero-theme-title">機能</span></div>
+        <div class="theme-grid">
+          <a class="theme-swatch" href="index.html">文字起こし（OCR）</a>
+          <a class="theme-swatch selected" href="redact.html">墨消し＋OCR</a>
+        </div>
+      </div>
+    </div>
+    <div class="hero-right">
+      <div class="browser-mock" aria-hidden="true">
+        <div class="browser-mock-bar"><span class="dot dot-red"></span><span class="dot dot-yellow"></span><span class="dot dot-green"></span><span class="browser-mock-url">scan-ocr / 墨消し</span></div>
+        <div class="browser-mock-body">
+          <div class="mock-flow">
+            <div class="mock-paper scan"><span class="mock-h" style="width:50%"></span><span class="mock-line" style="width:92%"></span><span class="mock-line" style="width:78%"></span><span class="mock-line" style="width:88%"></span><span class="mock-line" style="width:60%"></span></div>
+            <span class="mock-arrow">→</span>
+            <div class="mock-paper"><span class="mock-badge">墨消し済み</span><span class="mock-h" style="width:50%"></span><span class="mock-redact" style="width:64%"></span><span class="mock-line" style="width:78%"></span><span class="mock-redact" style="width:48%"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
 <div class="wrap wrap-wide">
 
-  <h1 class="page-title">墨消し</h1>
-  <p class="page-desc">
-    人名・住所などをスキャン画像の上で黒塗りしてから、あらためてOCRします。
-    墨消しした文字は、できあがるPDF・Markdown・JSONのどこにも残りません。
-    処理はこのパソコンの中だけで行われます。
-  </p>
-  <p class="nav-link"><a href="index.html">← 通常のOCRに戻る</a></p>
+  <p class="page-note">人名・住所などをスキャン画像の上で黒塗りしてから、あらためてOCRします。墨消しした文字は、できあがるPDF・Markdown・JSONのどこにも残りません。処理はこのパソコンの中だけで行われます。</p>
 
   <!-- 訴訟資料を墨消しする手順 -->
   <details class="card howto-card" open>
