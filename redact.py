@@ -156,12 +156,41 @@ def _min_mismatch(term: str, line: str) -> int:
     return best
 
 
+def _cross_line_dict_hits(norm_lines: list[str], terms: list[str]) -> dict[int, str]:
+    """OCRが1つの語を複数の行(word)に割った場合（例: 「山田」「太郎」）の辞書ヒットを探す。
+    各行を連結した文字列で完全一致を探し、複数行にまたがる一致があれば、その全行を
+    {行番号: 理由} で返す。（あいまい一致は誤検出が増えるので行内だけに限る）"""
+    concat = "".join(norm_lines)
+    if not concat:
+        return {}
+    owner = []
+    for idx, text in enumerate(norm_lines):
+        owner.extend([idx] * len(text))
+
+    hits: dict[int, str] = {}
+    for term in terms:
+        norm_term = normalize(term)
+        if not norm_term:
+            continue
+        start = concat.find(norm_term)
+        while start != -1:
+            idxs = set(owner[start:start + len(norm_term)])
+            if len(idxs) > 1:
+                for idx in idxs:
+                    hits.setdefault(idx, f"辞書（行をまたぐ）: {term}")
+            start = concat.find(norm_term, start + 1)
+    return hits
+
+
 def find_candidates(pages_lines: list[list[dict]], terms: list[str]) -> list[Candidate]:
     """辞書＋パターンで墨消し候補行を検出する。低信頼度の行は別枠（要目視確認）で返す。"""
     candidates = []
     for page_no, lines in enumerate(pages_lines, start=1):
-        for line in lines:
-            norm_line = normalize(line["text"])
+        norm_lines = [normalize(line["text"]) for line in lines]
+        cross_hits = _cross_line_dict_hits(norm_lines, terms)
+
+        for idx, line in enumerate(lines):
+            norm_line = norm_lines[idx]
             if not norm_line:
                 continue
 
@@ -183,6 +212,10 @@ def find_candidates(pages_lines: list[list[dict]], terms: list[str]) -> list[Can
                         hit_reason = f"辞書（あいまい一致・{diff}文字相違）: {term}"
                         hit_kind = "dict"
                         break
+
+            if not hit_reason and idx in cross_hits:
+                hit_reason = cross_hits[idx]
+                hit_kind = "dict"
 
             if not hit_reason:
                 for label, pattern in PATTERNS.items():

@@ -16,7 +16,7 @@ import webbrowser
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
@@ -69,6 +69,21 @@ HOST = "127.0.0.1"
 PORT = 8791
 
 app = FastAPI()
+
+# このサーバーは自分のPC専用。他サイトのページ（クロスサイトのフォームPOST）や、
+# DNSリバインディングで別名からのアクセスを、Host/Originの検査で拒否する。
+_ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+_ALLOWED_ORIGINS = {f"http://{h}" for h in _ALLOWED_HOSTS}
+
+
+@app.middleware("http")
+async def local_only_guard(request, call_next):
+    if request.headers.get("host", "") not in _ALLOWED_HOSTS:
+        return JSONResponse({"detail": "許可されていないHostです"}, status_code=403)
+    origin = request.headers.get("origin")
+    if origin is not None and origin not in _ALLOWED_ORIGINS:
+        return JSONResponse({"detail": "許可されていないOriginです"}, status_code=403)
+    return await call_next(request)
 
 # job_id -> 下記いずれか
 #   単発: {mode:"single", status, pages_total, pages_done, elapsed_sec, error,
@@ -427,9 +442,14 @@ async def api_redact_match(job_id: str = Form(...), dictionary: str = Form("")):
         raise HTTPException(409, "候補検出用OCRがまだ完了していません")
 
     lines_path = job["dir"] / "lines.json"
-    pages_lines = _json.loads(lines_path.read_text(encoding="utf-8"))
-    terms = redact_mod.load_dictionary(dictionary)
-    candidates = redact_mod.find_candidates(pages_lines, terms)
+
+    def _match():
+        pages_lines = _json.loads(lines_path.read_text(encoding="utf-8"))
+        terms = redact_mod.load_dictionary(dictionary)
+        return redact_mod.find_candidates(pages_lines, terms)
+
+    # 辞書が大きいと照合はCPUを食うので、イベントループを塞がないようスレッドで実行する
+    candidates = await run_in_threadpool(_match)
     return {
         "page_count": job["page_count"],
         "candidates": [c.to_dict() for c in candidates],
