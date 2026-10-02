@@ -66,10 +66,19 @@ function showCard(card) {
   }
 }
 
-function showError(message) {
+const errorRetryBtn = document.getElementById("errorRetryBtn");
+
+function showError(message, { canReturnToReview = false } = {}) {
   errorText.textContent = message;
+  errorRetryBtn.hidden = !canReturnToReview;
   showCard(errorCard);
 }
+
+// 墨消しの適用に失敗したときは、確認画面（選んだ範囲はそのまま）に戻ってやり直せる
+errorRetryBtn.addEventListener("click", async () => {
+  showCard(reviewCard);
+  await loadPage(currentPage);
+});
 
 // ── ① ファイル選択 ──────────────────────────────────────────────
 function setFile(file) {
@@ -372,7 +381,7 @@ applyBtn.addEventListener("click", async () => {
     const res = await fetch("/api/redact/apply", { method: "POST", body: form });
     if (!res.ok) throw new Error(await res.text());
   } catch (e) {
-    showError("墨消しの実行開始に失敗しました: " + e.message);
+    showError("墨消しの実行開始に失敗しました: " + e.message, { canReturnToReview: true });
     return;
   }
 
@@ -399,7 +408,7 @@ function pollApplyStatus() {
         showResult(s);
       } else if (s.status === "error") {
         clearInterval(timer);
-        showError(s.error || "墨消しの実行中にエラーが発生しました");
+        showError(s.error || "墨消しの実行中にエラーが発生しました", { canReturnToReview: true });
       }
     } catch (e) {
       clearInterval(timer);

@@ -7,6 +7,7 @@ app.py — scan-ocr のローカルWebサーバー。
 既定で http://127.0.0.1:8791 を開く。
 """
 
+import functools
 import os
 import shutil
 import threading
@@ -34,6 +35,19 @@ JOBS_DIR = BASE_DIR / "jobs"
 JOBS_DIR.mkdir(exist_ok=True)
 
 JOB_MAX_AGE_SEC = 24 * 3600
+
+
+# OCRモデル(DocumentAnalyzer)は全ジョブで共有していて並行利用に対して無防備、かつCPUも食うので、
+# OCRを行うジョブは1つずつ順番に実行する（待っている間は status="queued" のまま）。
+_OCR_LOCK = threading.Lock()
+
+
+def _serialized(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _OCR_LOCK:
+            return fn(*args, **kwargs)
+    return wrapper
 
 
 def _rmtree_quiet(path: Path):
@@ -97,6 +111,7 @@ def _parse_outputs(outputs: str) -> set:
     return {o.strip() for o in outputs.split(",") if o.strip()} & SUPPORT_OUTPUTS
 
 
+@_serialized
 def run_job(job_id: str, input_path: Path, output_dir: str | None, name_template: str):
     job = JOBS[job_id]
     job["status"] = "processing"
@@ -198,6 +213,7 @@ def _list_batch_pdfs(folder: Path):
     )
 
 
+@_serialized
 def run_batch_job(job_id: str, folder: Path, output_dir: str | None, name_template: str):
     job = JOBS[job_id]
     job["status"] = "processing"
@@ -332,6 +348,13 @@ import json as _json
 REDACT_JOBS: dict = {}
 
 
+def _review_ready(job) -> bool:
+    """確認画面の操作（照合・適用）ができる状態か。候補検出が完了している、
+    または墨消し適用に失敗してやり直す場合（元の画像は残してある）。"""
+    return (job["phase"] == "lines" and job["status"] == "done") or            (job["phase"] == "apply" and job["status"] == "error")
+
+
+@_serialized
 def run_redact_lines_job(job_id: str, input_path: Path, lite: bool, dpi: int = 200):
     job = REDACT_JOBS[job_id]
     job["status"] = "processing"
@@ -438,7 +461,7 @@ async def api_redact_match(job_id: str = Form(...), dictionary: str = Form("")):
     job = REDACT_JOBS.get(job_id)
     if not job:
         raise HTTPException(404, "ジョブが見つかりません")
-    if job["phase"] != "lines" or job["status"] != "done":
+    if not _review_ready(job):
         raise HTTPException(409, "候補検出用OCRがまだ完了していません")
 
     lines_path = job["dir"] / "lines.json"
@@ -456,6 +479,7 @@ async def api_redact_match(job_id: str = Form(...), dictionary: str = Form("")):
     }
 
 
+@_serialized
 def run_redact_apply_job(
     job_id: str,
     boxes_per_page: dict,
@@ -466,10 +490,7 @@ def run_redact_apply_job(
     lite: bool,
 ):
     job = REDACT_JOBS[job_id]
-    job["phase"] = "apply"
     job["status"] = "processing"
-    job["pages_done"] = 0
-    job["pages_total"] = 0
     t0 = time.time()
     try:
         page_paths = sorted((job["dir"] / "pages").glob("page_*.png"))
@@ -515,10 +536,11 @@ def run_redact_apply_job(
         job["status"] = "error"
         job["error"] = str(e)
     finally:
-        # 墨消し前のページ画像・OCR全文は、適用後は不要（再適用はできない）ので消す。
-        # 墨消し済みの出力(output/)だけを残す。
-        _rmtree_quiet(job["dir"] / "pages")
-        _rm_quiet(job["dir"] / "lines.json")
+        # 成功したら、墨消し前のページ画像・OCR全文は不要なので消す（墨消し済みの出力 output/ だけ残す）。
+        # 失敗したときは、確認画面に戻って再実行できるよう残す（24時間後/次回起動時に削除される）。
+        if job["status"] == "done":
+            _rmtree_quiet(job["dir"] / "pages")
+            _rm_quiet(job["dir"] / "lines.json")
 
 
 @app.post("/api/redact/apply")
@@ -534,7 +556,7 @@ async def api_redact_apply(
     job = REDACT_JOBS.get(job_id)
     if not job:
         raise HTTPException(404, "ジョブが見つかりません")
-    if job["phase"] != "lines" or job["status"] != "done":
+    if not _review_ready(job):
         raise HTTPException(409, "候補検出用OCRがまだ完了していません")
 
     try:
@@ -546,6 +568,16 @@ async def api_redact_apply(
     output_set = _parse_outputs(outputs)
     if not output_set:
         raise HTTPException(400, "出力形式を1つ以上選んでください")
+
+    # 状態の切り替えはここ(リクエスト処理中)で同期的に行う。スレッド側に任せると、連打で二重に
+    # 走ったり、開始直後のポーリングが候補検出フェーズの "done" を拾って空の結果を出したりする。
+    job["phase"] = "apply"
+    job["status"] = "queued"
+    job["error"] = None
+    job["files"] = {}
+    job["leftover"] = None
+    job["pages_done"] = 0
+    job["pages_total"] = 0
 
     thread = threading.Thread(
         target=run_redact_apply_job,
