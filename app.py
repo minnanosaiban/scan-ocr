@@ -33,6 +33,38 @@ BASE_DIR = Path(__file__).parent
 JOBS_DIR = BASE_DIR / "jobs"
 JOBS_DIR.mkdir(exist_ok=True)
 
+JOB_MAX_AGE_SEC = 24 * 3600
+
+
+def _rmtree_quiet(path: Path):
+    shutil.rmtree(path, ignore_errors=True)
+
+
+def _rm_quiet(path: Path):
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def _purge_jobs(max_age_sec: float | None):
+    """jobs/ の作業ファイル(アップロード原本・墨消し前のページ画像・OCR全文など)を消す。
+    max_age_sec=None なら全削除(起動時: メモリ上のJOBSは空なので、残りは全て孤児)。
+    実行中のジョブを巻き込まないよう、それ以外は更新から一定時間たったものだけ消す。"""
+    now = time.time()
+    for d in JOBS_DIR.iterdir():
+        try:
+            if max_age_sec is None or now - d.stat().st_mtime > max_age_sec:
+                _rmtree_quiet(d) if d.is_dir() else _rm_quiet(d)
+        except OSError:
+            pass
+
+
+def _safe_upload_name(filename: str | None) -> str:
+    """クライアント指定のファイル名からディレクトリ成分を落とす（`..\` による jobs 外への書き込み防止）。"""
+    name = Path((filename or "").replace("\\", "/")).name
+    return name if name not in ("", ".", "..") else "upload"
+
 HOST = "127.0.0.1"
 PORT = 8791
 
@@ -87,6 +119,8 @@ def run_job(job_id: str, input_path: Path, output_dir: str | None, name_template
     except Exception as e:
         job["status"] = "error"
         job["error"] = str(e)
+    finally:
+        _rm_quiet(input_path)  # アップロード原本は処理後に残さない（出力は output/ に残る）
 
 
 @app.post("/api/process")
@@ -97,7 +131,8 @@ async def api_process(
     output_dir: str = Form(""),
     name_template: str = Form(DEFAULT_NAME_TEMPLATE),
 ):
-    ext = Path(file.filename).suffix[1:].lower()
+    upload_name = _safe_upload_name(file.filename)
+    ext = Path(upload_name).suffix[1:].lower()
     if ext not in SUPPORT_INPUT_EXT:
         raise HTTPException(400, f"未対応の形式です: .{ext}")
 
@@ -105,11 +140,12 @@ async def api_process(
     if not output_set:
         raise HTTPException(400, "出力形式を1つ以上選んでください")
 
+    _purge_jobs(JOB_MAX_AGE_SEC)
     job_id = uuid.uuid4().hex[:12]
     job_dir = JOBS_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    input_path = job_dir / file.filename
+    input_path = job_dir / upload_name
     with open(input_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
@@ -286,6 +322,7 @@ def run_redact_lines_job(job_id: str, input_path: Path, lite: bool, dpi: int = 2
     job["status"] = "processing"
     try:
         imgs = redact_mod.render_pages(input_path, dpi=dpi)
+        _rm_quiet(input_path)  # 以降はページ画像(pages/)だけを使う。原本は残さない
         job["page_count"] = len(imgs)
         redact_dir = job["dir"]
         redact_mod.save_page_images(imgs, redact_dir / "pages")
@@ -309,16 +346,18 @@ async def api_redact_start(
     file: UploadFile = File(...),
     lite: str = Form("false"),
 ):
-    ext = Path(file.filename).suffix[1:].lower()
+    upload_name = _safe_upload_name(file.filename)
+    ext = Path(upload_name).suffix[1:].lower()
     if ext not in SUPPORT_INPUT_EXT:
         raise HTTPException(400, f"未対応の形式です: .{ext}")
 
+    _purge_jobs(JOB_MAX_AGE_SEC)
     job_id = uuid.uuid4().hex[:12]
     job_dir = JOBS_DIR / job_id
     redact_dir = job_dir / "redact"
     redact_dir.mkdir(parents=True, exist_ok=True)
 
-    input_path = job_dir / file.filename
+    input_path = job_dir / upload_name
     with open(input_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
@@ -330,8 +369,9 @@ async def api_redact_start(
         "page_count": 0,
         "error": None,
         "dir": redact_dir,
-        "stem": Path(file.filename).stem,
-        "input_name": file.filename,
+        "stem": Path(upload_name).stem,
+        "input_name": upload_name,
+        "input_path": input_path,
         "files": {},
         "saved_dir": None,
         "save_warning": None,
@@ -436,12 +476,10 @@ def run_redact_apply_job(
         job["elapsed_sec"] = time.time() - t0
 
         # 検証: 墨消し後の画像を再OCRし、辞書語・パターンが残っていないか確認する
+        # 辞書が空でも、パターン(電話番号・郵便番号・日付)の残りは確認する
         terms = redact_mod.load_dictionary(dictionary_text)
-        if terms:
-            verify_lines = redact_mod.ocr_lines(redacted_imgs, lite=lite)
-            job["leftover"] = redact_mod.verify_no_leftover(verify_lines, terms)
-        else:
-            job["leftover"] = []
+        verify_lines = redact_mod.ocr_lines(redacted_imgs, lite=lite)
+        job["leftover"] = redact_mod.verify_no_leftover(verify_lines, terms)
 
         if output_dir:
             try:
@@ -456,6 +494,11 @@ def run_redact_apply_job(
     except Exception as e:
         job["status"] = "error"
         job["error"] = str(e)
+    finally:
+        # 墨消し前のページ画像・OCR全文は、適用後は不要（再適用はできない）ので消す。
+        # 墨消し済みの出力(output/)だけを残す。
+        _rmtree_quiet(job["dir"] / "pages")
+        _rm_quiet(job["dir"] / "lines.json")
 
 
 @app.post("/api/redact/apply")
@@ -547,5 +590,6 @@ app.mount("/", StaticFiles(directory=BASE_DIR / "static", html=True), name="stat
 if __name__ == "__main__":
     import uvicorn
 
+    _purge_jobs(None)  # 前回までの作業ファイル(墨消し前の画像など)を持ち越さない
     threading.Timer(1.0, lambda: webbrowser.open(f"http://{HOST}:{PORT}")).start()
     uvicorn.run(app, host=HOST, port=PORT)

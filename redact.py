@@ -15,7 +15,6 @@ redact.py — 墨消し（人名・住所などの自動候補検出＋手動確
 import re
 import unicodedata
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -43,7 +42,12 @@ PATTERNS: dict[str, re.Pattern] = {
 }
 
 LOW_CONFIDENCE_THRESHOLD = 0.5
-FUZZY_THRESHOLD = 0.82
+# あいまい一致で許す「置換された文字数」。OCRの誤認識(例: 太郎→太朗)は同じ長さでの
+# 文字の取り違えが大半なので、位置ごとの不一致を数える。日本語の氏名は2〜4文字が多く、
+# 類似度の比率(SequenceMatcher等)では1文字違いが閾値を割ってしまうため、文字数で指定する。
+# 見逃しのほうが誤検出より重い(誤検出は目視確認で外せる)ので、3文字から1文字違いまで許す。
+FUZZY_MIN_LEN = 3
+FUZZY_LONG_LEN = 7  # この長さ以上は2文字違いまで許す
 
 
 def normalize(text: str) -> str:
@@ -138,17 +142,17 @@ def ocr_lines(imgs, lite: bool = False, on_progress: Optional[Callable[[int, int
     return pages
 
 
-def _best_fuzzy_ratio(term: str, line: str) -> float:
-    """lineの中でtermと同じ長さの部分文字列をスライドさせ、最も似ている箇所の類似度を返す。
-    OCRの1〜2文字程度の誤認識（例: 「太郎」→「太朗」）を拾うための簡易あいまい一致。"""
+def _min_mismatch(term: str, line: str) -> int:
+    """lineの中でtermと同じ長さの部分文字列をスライドさせ、位置ごとの不一致文字数の最小値を返す。
+    lineがtermより短ければ比較できないので term の長さ(=全不一致)を返す。"""
     n = len(term)
-    if len(line) < n:
-        return SequenceMatcher(None, term, line).ratio()
-    best = 0.0
+    best = n
     for i in range(len(line) - n + 1):
-        ratio = SequenceMatcher(None, term, line[i:i + n]).ratio()
-        if ratio > best:
-            best = ratio
+        diff = sum(a != b for a, b in zip(term, line[i:i + n]))
+        if diff < best:
+            best = diff
+            if best == 0:
+                break
     return best
 
 
@@ -172,16 +176,18 @@ def find_candidates(pages_lines: list[list[dict]], terms: list[str]) -> list[Can
                     hit_reason = f"辞書: {term}"
                     hit_kind = "dict"
                     break
-                if len(norm_term) >= 3:
-                    ratio = _best_fuzzy_ratio(norm_term, norm_line)
-                    if ratio >= FUZZY_THRESHOLD:
-                        hit_reason = f"辞書（あいまい一致 {ratio:.2f}）: {term}"
+                if len(norm_term) >= FUZZY_MIN_LEN:
+                    allowed = 2 if len(norm_term) >= FUZZY_LONG_LEN else 1
+                    diff = _min_mismatch(norm_term, norm_line)
+                    if diff <= allowed:
+                        hit_reason = f"辞書（あいまい一致・{diff}文字相違）: {term}"
                         hit_kind = "dict"
                         break
 
             if not hit_reason:
                 for label, pattern in PATTERNS.items():
-                    if pattern.search(line["text"]):
+                    # 辞書と同じく正規化後の文字列に当てる（全角の数字・ハイフン・空白入りも拾うため）
+                    if pattern.search(norm_line):
                         hit_reason = f"パターン: {label}"
                         hit_kind = "pattern"
                         break
