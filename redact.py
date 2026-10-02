@@ -120,6 +120,20 @@ def load_page_images(paths: list[Path]):
     return imgs
 
 
+def lines_from_result(result) -> list[dict]:
+    """yomitokuの解析結果から、行(word)単位のテキスト＋boxを取り出す。"""
+    lines = []
+    for w in result.words:
+        xs = [pt[0] for pt in w.points]
+        ys = [pt[1] for pt in w.points]
+        lines.append({
+            "box": [min(xs), min(ys), max(xs), max(ys)],
+            "text": w.content,
+            "rec_score": w.rec_score,
+        })
+    return lines
+
+
 def ocr_lines(imgs, lite: bool = False, on_progress: Optional[Callable[[int, int], None]] = None):
     """候補検出専用の軽量OCR。各ページの行(word)単位のテキスト＋boxのみ返す（構造化はしない）。"""
     analyzer = get_analyzer(lite, "cpu")
@@ -127,15 +141,7 @@ def ocr_lines(imgs, lite: bool = False, on_progress: Optional[Callable[[int, int
     total = len(imgs)
     for i, img in enumerate(imgs):
         result, _ocr_vis, _layout_vis = analyzer(img)
-        lines = []
-        for w in result.words:
-            xs = [pt[0] for pt in w.points]
-            ys = [pt[1] for pt in w.points]
-            lines.append({
-                "box": [min(xs), min(ys), max(xs), max(ys)],
-                "text": w.content,
-                "rec_score": w.rec_score,
-            })
+        lines = lines_from_result(result)
         pages.append(lines)
         if on_progress:
             on_progress(i + 1, total)

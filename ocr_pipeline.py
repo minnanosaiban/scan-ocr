@@ -92,6 +92,7 @@ def process_document(
         lite=lite, device=device, outputs=outputs, name_template=name_template,
         on_progress=on_progress, source_name=input_path.name,
         overwrite_check=input_path,
+        release_images=True,
     )
 
 
@@ -107,6 +108,8 @@ def process_rendered(
     source_name: Optional[str] = None,
     overwrite_check: Optional[Path] = None,
     extra_json_fields: Optional[dict] = None,
+    on_page_result: Optional[Callable[[int, object], None]] = None,
+    release_images: bool = False,
 ) -> dict:
     """すでにメモリ上にある画像（レンダリング済み、または墨消し焼き込み済み）からOCRし、
     outdir に選ばれた形式だけを書き出す。process_document はこれの薄いラッパー。
@@ -116,6 +119,10 @@ def process_rendered(
     overwrite_check: 指定した場合、書き出し先PDFがこのパスと同一になるときエラーにする
                       （出力先=入力元フォルダで元のスキャンPDFを誤って上書きするのを防ぐ）
     extra_json_fields: JSON出力のトップレベルに足す追加フィールド（例: {"redacted": True}）
+    on_page_result: 各ページのOCR結果(page_no, yomitokuの結果)を受け取るコールバック。
+                    呼び出し側が同じ画像を再OCRせずに結果を再利用するための口
+    release_images: Trueなら、処理し終えたページの画像をimgsリストから手放す（メモリ節約）。
+                    呼び出し側のリストを書き換えるので、imgsを後でまた使う場合はFalseのまま
     """
     from yomitoku.export import convert_markdown
     from yomitoku.utils.searchable_pdf import create_searchable_pdf
@@ -154,6 +161,12 @@ def process_rendered(
 
         if "json" in outputs:
             json_pages.append({"page": page_no, **result.model_dump()})
+
+        if on_page_result:
+            on_page_result(page_no, result)
+
+        if release_images:
+            imgs[i] = None  # PDF用のPIL画像へ複製済み。巨大なnumpy配列を早めに解放する
 
         if on_progress:
             on_progress(page_no, total)

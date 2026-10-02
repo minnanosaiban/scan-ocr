@@ -224,7 +224,13 @@ def run_batch_job(job_id: str, folder: Path, output_dir: str | None, name_templa
         job["pages_done"] = done
         job["pages_total"] = total
 
-    pdfs = _list_batch_pdfs(folder)
+    try:
+        pdfs = _list_batch_pdfs(folder)
+    except OSError as e:
+        # フォルダが途中で消えた・読めない等。握りつぶすと status が processing のまま止まる
+        job["status"] = "error"
+        job["error"] = f"フォルダを読み込めませんでした: {e}"
+        return
     job["file_total"] = len(pdfs)
 
     for i, pdf in enumerate(pdfs):
@@ -502,6 +508,11 @@ def run_redact_apply_job(
             job["pages_total"] = total
 
         outdir = job["dir"] / "output"
+        verify_lines = []  # 出力用OCRの結果を、墨消し残りの検証にそのまま使う（再OCRしない）
+
+        def on_page_result(page_no, ocr_result):
+            verify_lines.append(redact_mod.lines_from_result(ocr_result))
+
         result = process_rendered(
             redacted_imgs,
             job["stem"],
@@ -512,6 +523,7 @@ def run_redact_apply_job(
             on_progress=on_progress,
             source_name=job["input_name"],
             extra_json_fields={"redacted": True},
+            on_page_result=on_page_result,
         )
         job["files"] = {k: str(result[k]) for k in outputs if k in result}
         job["elapsed_sec"] = time.time() - t0
@@ -519,7 +531,6 @@ def run_redact_apply_job(
         # 検証: 墨消し後の画像を再OCRし、辞書語・パターンが残っていないか確認する
         # 辞書が空でも、パターン(電話番号・郵便番号・日付)の残りは確認する
         terms = redact_mod.load_dictionary(dictionary_text)
-        verify_lines = redact_mod.ocr_lines(redacted_imgs, lite=lite)
         job["leftover"] = redact_mod.verify_no_leftover(verify_lines, terms)
 
         if output_dir:
