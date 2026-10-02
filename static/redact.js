@@ -365,6 +365,8 @@ applyBtn.addEventListener("click", async () => {
     if (included.length) { boxes[pageNo] = included; total += included.length; }
   }
 
+  if (total === 0 && !confirm("墨消しする範囲が1つも選ばれていません。このままだと何も塗りつぶされません。続行しますか？")) return;
+
   const form = new FormData();
   form.append("job_id", jobId);
   form.append("boxes", JSON.stringify(boxes));

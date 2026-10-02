@@ -274,9 +274,9 @@ function showBatchResult(s) {
     const row = document.createElement("div");
     row.className = "batch-list-item";
     if (r.status === "done") {
-      row.innerHTML = `<span class="batch-status-ok">✓</span><span class="fname">${r.file}</span>`;
+      row.innerHTML = `<span class="batch-status-ok">✓</span><span class="fname">${escapeHtml(r.file)}</span>`;
     } else {
-      row.innerHTML = `<span class="batch-status-error">✕</span><span class="fname">${r.file}</span><span class="emsg">— ${r.error}</span>`;
+      row.innerHTML = `<span class="batch-status-error">✕</span><span class="fname">${escapeHtml(r.file)}</span><span class="emsg">— ${escapeHtml(r.error)}</span>`;
     }
     list.appendChild(row);
   }
@@ -284,6 +284,12 @@ function showBatchResult(s) {
   resultItems.appendChild(list);
 
   showCard(resultCard);
+}
+
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s == null ? "" : s;
+  return d.innerHTML;
 }
 
 function showError(message) {

@@ -8,6 +8,7 @@ app.py — scan-ocr のローカルWebサーバー。
 """
 
 import functools
+import json as _json
 import os
 import shutil
 import threading
@@ -345,8 +346,6 @@ async def api_download(job_id: str, fmt: str):
         raise HTTPException(404, f"この形式は生成されていません: {fmt}")
     return FileResponse(path, media_type=FMT_MEDIA.get(fmt), filename=Path(path).name)
 
-
-import json as _json
 
 # ── 墨消し ──────────────────────────────────────────────────────────
 # job_id -> {phase:"lines"|"apply", status, pages_done, pages_total, page_count,
