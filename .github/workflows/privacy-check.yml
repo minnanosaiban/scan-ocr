@@ -1,0 +1,39 @@
+name: privacy-check
+
+# ユーザー名・ユーザーフォルダーの絶対パス・自動生成ファイル（__pycache__ / .pyc）の混入を検出する
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for personal info
+        run: |
+          fail=0
+
+          # 1) 自動生成ファイル（絶対パスが埋め込まれる）が追跡されていないか
+          bad=$(git ls-files | grep -E '(^|/)__pycache__/|\.py[co]$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::自動生成ファイルがコミットされています:"
+            echo "$bad" | head -20
+            fail=1
+          fi
+
+          # 2) ユーザー名・ユーザーフォルダーの絶対パスが含まれていないか
+          #    （user / username などの置き換え用の名前は許可。このファイル自身は対象外）
+          hits=$(git grep -I -n -i -E 'm[u]kai|[A-Za-z]:[\\/]+Users[\\/]+[A-Za-z0-9_.-]+' -- . ':!.github/workflows/privacy-check.yml' \
+            | sed -E 's#[A-Za-z]:[\\/]+Users[\\/]+(user|username|yourname|you|public|default|xxx)([\\/]|[^A-Za-z0-9_.-]|$)#PLACEHOLDER\2#Ig' \
+            | grep -i -E 'm[u]kai|[A-Za-z]:[\\/]+Users[\\/]+[A-Za-z0-9_.-]' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::個人情報の可能性がある記述が見つかりました（相対パスに直してください）:"
+            echo "$hits" | head -30 | cut -c1-200
+            fail=1
+          fi
+
+          exit $fail
