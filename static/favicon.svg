@@ -1,6 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#000"/>
-  <text x="32" y="34" text-anchor="middle" dominant-baseline="central"
-        font-family="'Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic',Meiryo,sans-serif"
-        font-weight="700" font-size="42" fill="#fff">読</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- 印影マーク。応援傍聴ナビのファビコンと同じ意匠（角丸の赤枠＋2文字＋4度回転）。全サイト共通 -->
+  <rect width="32" height="32" rx="6" fill="#f3f2ee"/>
+  <g transform="rotate(-4 16 16)">
+    <rect x="3" y="3" width="26" height="26" rx="4.5" fill="none" stroke="#b93226" stroke-width="1.6"/>
+    <text x="16" y="19.6" text-anchor="middle" font-family="'Hiragino Mincho ProN','Yu Mincho',serif" font-weight="700" font-size="10" fill="#b93226">読取</text>
+  </g>
 </svg>
